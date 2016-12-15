@@ -1,6 +1,8 @@
 #!/bin/bash
 TARGET=android-9
 
+set -e
+
 real_path() {
   [[ $1 = /* ]] && echo "$1" || echo "$PWD/${1#./}"
 }
@@ -18,6 +20,7 @@ REL_SCRIPT_PATH="$(dirname $0)"
 SCRIPTPATH=$(real_path $REL_SCRIPT_PATH)
 CURLPATH="$SCRIPTPATH/../curl"
 SSLPATH="$SCRIPTPATH/../openssl"
+CARESPATH="$SCRIPTPATH/../c-ares"
 
 if [ -z "$NDK_ROOT" ]; then
   echo "Please set your NDK_ROOT environment variable first"
@@ -32,22 +35,24 @@ fi
 #Configure OpenSSL
 cd $SSLPATH
 ./Configure android no-asm no-shared no-cast no-idea no-camellia no-whirpool
-EXITCODE=$?
-if [ $EXITCODE -ne 0 ]; then
-	echo "Error running the ssl configure program"
-	cd $PWD
-	exit $EXITCODE
-fi
+
+#Configure c-ares env
+export SYSROOT="$NDK_ROOT/platforms/$TARGET/arch-arm"
+export CPPFLAGS="-I$NDK_ROOT/platforms/$TARGET/arch-arm/usr/include --sysroot=$SYSROOT"
+export CC=$($NDK_ROOT/ndk-which gcc)
+export LD=$($NDK_ROOT/ndk-which ld)
+
+#Configure c-ares
+cd $CARESPATH
+./buildconf
+./configure --host=arm-linux-androideabi \
+  --disable-shared \
+  --disable-debug
+  CFLAGS="-march=armeabi"
 
 #Build static libssl and libcrypto, required for cURL's configure
 cd $SCRIPTPATH
-$NDK_ROOT/ndk-build -j$JOBS -C $SCRIPTPATH ssl crypto
-EXITCODE=$?
-if [ $EXITCODE -ne 0 ]; then
-	echo "Error building the libssl and libcrypto"
-	cd $PWD
-	exit $EXITCODE
-fi
+$NDK_ROOT/ndk-build -j$JOBS -C $SCRIPTPATH cares ssl crypto
 
 #Configure cURL
 cd $CURLPATH
@@ -56,17 +61,10 @@ if [ ! -x "$CURLPATH/configure" ]; then
 	echo "Make sure you have autoconf, automake and libtool installed"
 
 	./buildconf
-
-	EXITCODE=$?
-	if [ $EXITCODE -ne 0 ]; then
-		echo "Error running the buildconf program"
-		cd $PWD
-		exit $EXITCODE
-	fi
 fi
 
 export SYSROOT="$NDK_ROOT/platforms/$TARGET/arch-arm"
-export CPPFLAGS="-I$NDK_ROOT/platforms/$TARGET/arch-arm/usr/include --sysroot=$SYSROOT"
+export CPPFLAGS="-I$NDK_ROOT/platforms/$TARGET/arch-arm/usr/include -I$CARESPATH --sysroot=$SYSROOT"
 export CC=$($NDK_ROOT/ndk-which gcc)
 export LD=$($NDK_ROOT/ndk-which ld)
 export CPP=$($NDK_ROOT/ndk-which cpp)
@@ -75,23 +73,18 @@ export AS=$($NDK_ROOT/ndk-which as)
 export AR=$($NDK_ROOT/ndk-which ar)
 export RANLIB=$($NDK_ROOT/ndk-which ranlib)
 
-export LIBS="-lssl -lcrypto"
 export LDFLAGS="-L$SCRIPTPATH/obj/local/armeabi"
-./configure --host=arm-linux-androideabi --target=arm-linux-androideabi \
+export LIBS="-lssl -lcrypto -lcares"
+./configure --host=arm-linux-androideabi \
+            --target=arm-linux-androideabi \
+            --disable-ntlm-wb \
             --with-ssl=$SSLPATH \
             --enable-static \
             --disable-shared \
             --disable-verbose \
-            --enable-threaded-resolver \
             --enable-libgcc \
             --enable-ipv6 \
-
-EXITCODE=$?
-if [ $EXITCODE -ne 0 ]; then
-  echo "Error running the configure program"
-  cd $PWD
-  exit $EXITCODE
-fi
+            --enable-ares="$CARESPATH"
 
 #Patch headers for 64-bit archs
 cd "$CURLPATH/include/curl"
@@ -106,11 +99,6 @@ mv curlbuild.h.temp curlbuild.h
 
 #Build cURL
 $NDK_ROOT/ndk-build -j$JOBS -C $SCRIPTPATH curl
-EXITCODE=$?
-if [ $EXITCODE -ne 0 ]; then
-	echo "Error running the ndk-build program"
-	exit $EXITCODE
-fi
 
 #Strip debug symbols and copy to the prebuilt folder
 PLATFORMS=(arm64-v8a x86_64 mips64 armeabi armeabi-v7a x86 mips)
