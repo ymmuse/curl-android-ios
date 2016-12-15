@@ -19,11 +19,11 @@ public class TestActivity extends Activity{
 				String url = "https://www.google.com";
 				Log.i("TestActivity", "Requesting URL to download: " + url);
 
-				byte[] content = downloadUrl(url);
+				byte[] content = downloadUrl(url, "8.8.8.8");
 				String contentString=content == null ? null : new String(content);
 				Log.i("TestActivity", contentString != null ? 
 										(contentString.length() > 50 ?
-											"First 50 bytes downloaded: " + contentString.substring(0,50) 
+											"First 50 bytes downloaded: " + contentString
 											: "Downloaded data: " + contentString)
 										: "Content is null");
 			}
@@ -31,5 +31,5 @@ public class TestActivity extends Activity{
 
 	}
 
-	public native byte[] downloadUrl(String url);
+	public native byte[] downloadUrl(String url, String dns);
 }; 

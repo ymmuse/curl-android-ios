@@ -20,7 +20,7 @@
 
 size_t curlCallback(char *data, size_t size, size_t count, void* userdata);
 
-BOOL downloadUrl(const char* url, LPCURL_DOWNLOAD_OBJECT downloadObject ) {
+BOOL downloadUrl(const char* url, const char* dns, LPCURL_DOWNLOAD_OBJECT downloadObject ) {
 	CURL* curl = curl_easy_init();
 	curl_easy_setopt(curl, CURLOPT_URL, url);
 	curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, TRUE);
@@ -29,8 +29,16 @@ BOOL downloadUrl(const char* url, LPCURL_DOWNLOAD_OBJECT downloadObject ) {
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, downloadObject);
 	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, FALSE);
 	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, FALSE);
+    curl_easy_setopt(curl, CURLOPT_DNS_CACHE_TIMEOUT, 0);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 3);
 
-	CURLcode res = curl_easy_perform(curl);
+    CURLcode res;
+ 	if ((res=curl_easy_setopt(curl, CURLOPT_DNS_SERVERS, dns)) != CURLE_OK) {
+                LOGI("CURL DNS failed with error code %d", res);
+				return res == CURLE_OK;
+    }
+
+	res = curl_easy_perform(curl);
 	if (res != CURLE_OK){
 	    LOGI("CURL failed with error code %d", res);
 	}
@@ -75,17 +83,21 @@ size_t curlCallback(char *data, size_t size, size_t count, void* userdata) {
 extern "C" 
 {
 	JNIEXPORT jbyteArray JNICALL
-	Java_com_example_androidtest_TestActivity_downloadUrl(JNIEnv* env, jobject obj, jstring url ){
+	Java_com_example_androidtest_TestActivity_downloadUrl(JNIEnv* env, jobject obj, jstring url, jstring dns){
 		const char* url_c = env->GetStringUTFChars(url, NULL);
 		if (!url_c)
 			return NULL;
 
-		LOGI( "Download URL: %s", url_c );
+		const char* dns_c = env->GetStringUTFChars(dns, NULL);
+        if (!dns_c)
+        	return NULL;
+
+		LOGI( "Download URL: %s dns: %s", url_c, dns_c);
 		CURL_DOWNLOAD_OBJECT* downloadObject = new CURL_DOWNLOAD_OBJECT;
         downloadObject->data = NULL;
         downloadObject->size=0;
 
-		if (downloadUrl(url_c, downloadObject)){
+		if (downloadUrl(url_c, dns_c, downloadObject)){
 			env->ReleaseStringUTFChars(url, url_c);
 			jbyteArray ret = env->NewByteArray(downloadObject->size);
 			env->SetByteArrayRegion(ret, 0, downloadObject->size, (jbyte*)downloadObject->data);

@@ -50,6 +50,33 @@ cd $CARESPATH
   --disable-debug
   CFLAGS="-march=armeabi"
 
+#Patch fixed "undefined reference to '__system_property_get'"
+cd $CARESPATH
+sed 's/#define MAX_DNS_PROPERTIES    8/\
+#include <dlfcn.h>\
+#define MAX_DNS_PROPERTIES  8\
+typedef int (*PFN_SYSTEM_PROP_GET)(const char *, char *); \
+int __system_property_get(const char* name, char* value) \
+{ \
+    static PFN_SYSTEM_PROP_GET __real_system_property_get = NULL; \
+    if (!__real_system_property_get) { \
+        \/\/ libc.so should already be open, get a handle to it. \
+        void *handle = dlopen("libc.so", RTLD_LAZY); \
+        if (!handle) { \
+            DEBUGF(fprintf(stderr, "Cannot dlopen libc.so: %s.\n", dlerror())); \
+        } else { \
+            __real_system_property_get = (PFN_SYSTEM_PROP_GET)dlsym(handle, "__system_property_get"); \
+        } \
+        if (!__real_system_property_get) { \
+            DEBUGF(fprintf(stderr,  "Cannot resolve __system_property_get(): %s.\n", dlerror())); \
+        } \
+    } \
+    return (*__real_system_property_get)(name, value); \
+} \
+/'< ares_init.c > ares_init.c.temp
+
+mv ares_init.c.temp ares_init.c
+
 #Build static libssl and libcrypto, required for cURL's configure
 cd $SCRIPTPATH
 $NDK_ROOT/ndk-build -j$JOBS -C $SCRIPTPATH cares ssl crypto
@@ -84,7 +111,9 @@ export LIBS="-lssl -lcrypto -lcares"
             --disable-verbose \
             --enable-libgcc \
             --enable-ipv6 \
-            --enable-ares="$CARESPATH"
+            --enable-ares="$CARESPATH" \
+            --disable-smtp --disable-ftp --disable-rtsp --disable-telnet --disable-tftp\
+            --disable-pop3  --disable-imap --disable-smb --disable-smtp  --disable-sspi
 
 #Patch headers for 64-bit archs
 cd "$CURLPATH/include/curl"

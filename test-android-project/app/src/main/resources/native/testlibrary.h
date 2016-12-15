@@ -17,6 +17,6 @@ typedef struct _CURL_DOWNLOAD_OBJECT {
     LPBYTE data;
 } CURL_DOWNLOAD_OBJECT, *LPCURL_DOWNLOAD_OBJECT;
 
-BOOL downloadUrl(const char* url, LPCURL_DOWNLOAD_OBJECT downloadObject);
+BOOL downloadUrl(const char* url, const char* dns, LPCURL_DOWNLOAD_OBJECT downloadObject);
 
 #endif
